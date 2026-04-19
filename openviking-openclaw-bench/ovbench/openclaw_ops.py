@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -241,6 +242,43 @@ def gateway_restart(cfg: BenchConfig, group: GroupSpec) -> None:
 
 def gateway_start(cfg: BenchConfig, group: GroupSpec) -> None:
     run_command(openclaw_cmd(cfg, group, "gateway", "start"), env=group_env(cfg, group))
+
+
+def gateway_wait_healthy(
+    cfg: BenchConfig,
+    group: GroupSpec,
+    *,
+    timeout_sec: float = 30.0,
+    poll_sec: float = 1.0,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_sec
+    last_stdout = ""
+    last_stderr = ""
+    env = group_env(cfg, group)
+
+    while time.monotonic() < deadline:
+        result = run_command(
+            openclaw_cmd(cfg, group, "health", "--json", "--verbose"),
+            env=env,
+            check=False,
+        )
+        last_stdout = (result.stdout or "").strip()
+        last_stderr = (result.stderr or "").strip()
+
+        if result.returncode == 0:
+            if not last_stdout:
+                return {"ok": True}
+            try:
+                return json.loads(last_stdout)
+            except json.JSONDecodeError:
+                return {"raw": last_stdout}
+
+        time.sleep(poll_sec)
+
+    raise RuntimeError(
+        f"gateway for {group.group_id} did not become healthy within {timeout_sec:.1f}s.\n"
+        f"stdout:\n{last_stdout}\n\nstderr:\n{last_stderr}"
+    )
 
 
 
