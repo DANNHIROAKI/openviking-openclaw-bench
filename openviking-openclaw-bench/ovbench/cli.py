@@ -16,6 +16,7 @@ from .judge import run as run_judge
 from .merge_results import merge_run_dir
 from .openclaw_ops import (
     apply_lancedb_workaround,
+    config_set,
     configure_group_slots,
     configure_lancedb,
     configure_openviking,
@@ -25,6 +26,7 @@ from .openclaw_ops import (
     gateway_restart,
     gateway_start,
     gateway_stop,
+    gateway_wait_healthy,
     install_openclaw,
     install_openviking_plugin,
     install_openviking_runtime,
