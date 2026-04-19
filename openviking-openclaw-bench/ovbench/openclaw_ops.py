@@ -91,14 +91,15 @@ def write_gateway_token(group: GroupSpec) -> str:
 
 def install_openclaw(cfg: BenchConfig) -> None:
     openclaw_bin = cfg.openclaw_bin()
-    if openclaw_bin.exists():
-        return
-    ensure_dir(cfg.openclaw_prefix)
-    script = (
-        f"curl -fsSL --proto '=https' --tlsv1.2 {cfg.openclaw_install_script} | "
-        f"bash -s -- --prefix '{cfg.openclaw_prefix}' --version {cfg.openclaw_version}"
-    )
-    bash_pipe(script)
+    if not openclaw_bin.exists():
+        ensure_dir(cfg.openclaw_prefix)
+        script = (
+            f"curl -fsSL --proto '=https' --tlsv1.2 {cfg.openclaw_install_script} | "
+            f"bash -s -- --prefix '{cfg.openclaw_prefix}' --version {cfg.openclaw_version}"
+        )
+        bash_pipe(script)
+
+    ensure_workspace_templates(cfg)
 
 
 
@@ -135,10 +136,14 @@ def ensure_workspace_templates(cfg: BenchConfig) -> None:
     for p in src_files:
         shutil.copy2(p, dst / p.name)
 
+
 def onboard_group(cfg: BenchConfig, group: GroupSpec) -> None:
+    ensure_workspace_templates(cfg)
+
     token = write_gateway_token(group)
     ensure_group_layout(group)
     write_group_runtime_env(cfg, group, token=token)
+
     api_key = cfg.front_model.api_key()
     env = group_env(
         cfg,
@@ -185,13 +190,28 @@ def onboard_group(cfg: BenchConfig, group: GroupSpec) -> None:
             ),
             env=env,
         )
-    run_command(openclaw_cmd(cfg, group, "config", "set", "agents.defaults.workspace", str(group.workspace)), env=env)
-    run_command(openclaw_cmd(cfg, group, "setup", "--workspace", str(group.workspace)), env=env)
+
+    run_command(
+        openclaw_cmd(
+            cfg,
+            group,
+            "config",
+            "set",
+            "agents.defaults.workspace",
+            str(group.workspace),
+        ),
+        env=env,
+    )
+
+    run_command(
+        openclaw_cmd(cfg, group, "setup", "--workspace", str(group.workspace)),
+        env=env,
+    )
+
     # Always enable the HTTP API endpoints used by the evaluator.
     config_set(cfg, group, "gateway.http.endpoints.responses.enabled", True)
     config_set(cfg, group, "gateway.http.endpoints.chatCompletions.enabled", True)
-
-
+    
 
 def config_set(cfg: BenchConfig, group: GroupSpec, path: str, value: Any) -> None:
     env = group_env(cfg, group)
