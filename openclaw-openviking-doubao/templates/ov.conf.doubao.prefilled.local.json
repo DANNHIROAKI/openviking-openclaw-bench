@@ -1,0 +1,30 @@
+{
+  "storage": {
+    "workspace": "__OPENVIKING_WORKSPACE__"
+  },
+  "log": {
+    "level": "INFO",
+    "output": "file"
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 1933
+  },
+  "embedding": {
+    "dense": {
+      "api_base": "https://ark.cn-beijing.volces.com/api/v3",
+      "api_key": "1ed34ba3-ccfb-4326-8587-ca0c0d304301",
+      "provider": "volcengine",
+      "dimension": 1024,
+      "model": "doubao-embedding-vision-251215"
+    },
+    "max_concurrent": 10
+  },
+  "vlm": {
+    "api_base": "https://ark.cn-beijing.volces.com/api/v3",
+    "api_key": "1ed34ba3-ccfb-4326-8587-ca0c0d304301",
+    "provider": "volcengine",
+    "model": "doubao-seed-2-0-pro-260215",
+    "max_concurrent": 100
+  }
+}

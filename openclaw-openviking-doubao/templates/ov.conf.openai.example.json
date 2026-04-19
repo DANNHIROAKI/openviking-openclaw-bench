@@ -1,0 +1,30 @@
+{
+  "storage": {
+    "workspace": "__OPENVIKING_WORKSPACE__"
+  },
+  "log": {
+    "level": "INFO",
+    "output": "file"
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 1933
+  },
+  "embedding": {
+    "dense": {
+      "api_base": "https://api.openai.com/v1",
+      "api_key": "__OPENAI_API_KEY__",
+      "provider": "openai",
+      "dimension": 3072,
+      "model": "text-embedding-3-large"
+    },
+    "max_concurrent": 10
+  },
+  "vlm": {
+    "api_base": "https://api.openai.com/v1",
+    "api_key": "__OPENAI_API_KEY__",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "max_concurrent": 100
+  }
+}

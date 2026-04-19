@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec bash "$SCRIPT_DIR/20_install_openviking_local_doubao_prefilled.sh" "$@"

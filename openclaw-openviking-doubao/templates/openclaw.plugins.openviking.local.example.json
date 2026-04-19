@@ -1,0 +1,25 @@
+{
+  "plugins": {
+    "allow": [
+      "openviking"
+    ],
+    "slots": {
+      "contextEngine": "openviking"
+    },
+    "entries": {
+      "openviking": {
+        "enabled": true,
+        "config": {
+          "mode": "local",
+          "configPath": "~/.openviking/ov.conf",
+          "port": 1933,
+          "agentId": "default",
+          "autoCapture": true,
+          "autoRecall": true,
+          "emitStandardDiagnostics": true,
+          "logFindRequests": false
+        }
+      }
+    }
+  }
+}
