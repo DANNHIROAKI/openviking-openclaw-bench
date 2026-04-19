@@ -47,6 +47,50 @@ def group_gateway_token(group: GroupSpec) -> str:
         raise RuntimeError(f"gateway token file missing: {group.gateway_token_file}")
     return group.gateway_token_file.read_text(encoding="utf-8").strip()
 
+STRICT_SMOKE_DENY_TOOLS = [
+    "read",
+    "write",
+    "edit",
+    "apply_patch",
+    "exec",
+    "process",
+    "browser",
+    "canvas",
+    "nodes",
+    "cron",
+    "gateway",
+    "image",
+    "image_generate",
+    "video_generate",
+    "memory_search",
+    "memory_get",
+    "web_search",
+    "web_fetch",
+    "x_search",
+    "sessions_list",
+    "sessions_history",
+    "sessions_send",
+    "sessions_spawn",
+    "sessions_yield",
+    "subagents",
+    "message",
+]
+
+
+def _normalize_probe_answer(text: str) -> str:
+    return text.strip().strip("`'\" \n\r\t。！？!?.,，")
+
+
+def _prepare_session_only_smoke(cfg: BenchConfig, group: GroupSpec) -> None:
+    # 第一层 smoke 只测 sender -> session 映射，不测 workspace / memory / tool reachability。
+    # 这里会改组内配置，所以跑完第一层后要重新 setup-group --reset 恢复 canonical 配置。
+    config_set(cfg, group, "tools.profile", "minimal")
+    config_set(cfg, group, "tools.allow", ["session_status"])
+    config_set(cfg, group, "tools.deny", STRICT_SMOKE_DENY_TOOLS)
+    config_set(cfg, group, "agents.defaults.sandbox.workspaceAccess", "none")
+    gateway_restart(cfg, group)
+    gateway_wait_healthy(cfg, group, timeout_sec=40.0)
+
 
 def setup_group(cfg: BenchConfig, group: GroupSpec, *, reset: bool) -> None:
     gateway_stop(cfg, group)
@@ -55,11 +99,9 @@ def setup_group(cfg: BenchConfig, group: GroupSpec, *, reset: bool) -> None:
     if group.needs_openviking:
         install_openviking_runtime(cfg)
     onboard_group(cfg, group)
-
     if group.needs_openviking:
         install_openviking_plugin(cfg, group)
         configure_openviking(cfg, group)
-
     if group.memory_plugin == "memory-lancedb":
         workaround_info = apply_lancedb_workaround(cfg)
         write_json(group.logs_dir / "lancedb.workaround.json", workaround_info)
@@ -72,6 +114,14 @@ def setup_group(cfg: BenchConfig, group: GroupSpec, *, reset: bool) -> None:
         gateway_start(cfg, group)
     except Exception:
         gateway_restart(cfg, group)
+
+    try:
+        health = gateway_wait_healthy(cfg, group, timeout_sec=40.0)
+    except Exception:
+        copy_best_effort_logs(cfg, group, group.logs_dir)
+        raise
+
+    write_json(group.logs_dir / "health.json", health)
 
     verification = verify_group(cfg, group)
     write_json(group.logs_dir / "verify.json", verification)
@@ -185,18 +235,28 @@ def _wait_for_session_change(
 
 
 def smoke_continuity(cfg: BenchConfig, group: GroupSpec, *, run_label: str = "smoke") -> dict[str, Any]:
+    # 第一层 smoke：只测会话连续性与 fresh-user 隔离。
+    _prepare_session_only_smoke(cfg, group)
+
     token = group_gateway_token(group)
     probe_tag = secrets.token_hex(4)
-    unique = f"SMOKE_{secrets.token_hex(6)}"
+    probe_name = f"Dann-{probe_tag}"
 
     user_same = f"{run_label}-{group.group_id}-continuity-a-{probe_tag}"
     user_fresh = f"{run_label}-{group.group_id}-continuity-b-{probe_tag}"
 
-    prompt1 = f"Remember this exact token: {unique}. Reply with ACK only."
-    prompt2 = "What exact token did I ask you to remember? Reply with the token only."
+    prompt1 = (
+        f"仅在当前这段对话里记住：我叫 {probe_name}。"
+        "不要调用任何工具，不要读写文件，不要查看 workspace、notes 或 memory。"
+        "只回复 ACK。"
+    )
+    prompt2 = (
+        "仅根据当前这段对话，我叫什么？"
+        "只回复名字本身。"
+        "不要调用任何工具，不要读写文件，不要查看 workspace、notes 或 memory。"
+    )
 
     before0 = _session_snapshot(group)
-
     reply1, usage1, _ = send_response(
         base_url=gateway_base_url(group),
         token=token,
@@ -234,17 +294,28 @@ def smoke_continuity(cfg: BenchConfig, group: GroupSpec, *, run_label: str = "sm
     fresh_session = _pick_latest_path(fresh_candidates, after3)
     fresh_user_new_session = fresh_session is not None
 
-    passed = (unique in reply2) and same_user_session_reused and fresh_user_new_session
+    same_user_correct = _normalize_probe_answer(reply2) == probe_name
+    fresh_user_isolated = probe_name not in reply3
+
+    passed = (
+        same_user_correct
+        and fresh_user_isolated
+        and same_user_session_reused
+        and fresh_user_new_session
+    )
 
     payload = {
         "passed": passed,
         "probe_tag": probe_tag,
-        "unique_token": unique,
+        "probe_name": probe_name,
+        "unique_token": probe_name,  # 保持向后兼容
         "same_user": user_same,
         "fresh_user": user_fresh,
         "step1_reply": reply1,
         "same_user_reply": reply2,
         "fresh_user_reply": reply3,
+        "same_user_correct": same_user_correct,
+        "fresh_user_isolated": fresh_user_isolated,
         "usage": {
             "step1": usage1,
             "step2": usage2,
