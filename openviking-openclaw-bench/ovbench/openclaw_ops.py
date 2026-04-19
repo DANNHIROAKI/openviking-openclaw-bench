@@ -111,7 +111,29 @@ def install_openviking_runtime(cfg: BenchConfig) -> None:
     run_command([str(python_bin), "-m", "pip", "install", "-U", "pip", "setuptools", "wheel"])
     run_command([str(python_bin), "-m", "pip", "install", f"openviking=={cfg.openviking_version}"])
 
+def ensure_workspace_templates(cfg: BenchConfig) -> None:
+    root = openclaw_package_root(cfg)
+    src = root / "docs" / "reference" / "templates"
+    dst = root / "dist" / "docs" / "reference" / "templates"
 
+    if not src.exists():
+        raise RuntimeError(
+            f"openclaw templates source missing: {src}. "
+            "Cannot patch dist/docs/reference/templates."
+        )
+
+    src_files = [p for p in src.iterdir() if p.is_file()]
+    if not src_files:
+        raise RuntimeError(f"openclaw templates source is empty: {src}")
+
+    ensure_dir(dst)
+
+    missing = [p.name for p in src_files if not (dst / p.name).exists()]
+    if not missing:
+        return
+
+    for p in src_files:
+        shutil.copy2(p, dst / p.name)
 
 def onboard_group(cfg: BenchConfig, group: GroupSpec) -> None:
     token = write_gateway_token(group)
