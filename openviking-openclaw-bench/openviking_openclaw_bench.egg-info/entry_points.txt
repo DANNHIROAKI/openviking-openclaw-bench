@@ -1,0 +1,6 @@
+[console_scripts]
+ovbench = ovbench.cli:main
+ovbench-eval = ovbench.eval:main
+ovbench-judge = ovbench.judge:main
+ovbench-merge = ovbench.merge_results:main
+ovbench-report = ovbench.report:main

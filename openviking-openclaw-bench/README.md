@@ -1,0 +1,254 @@
+# OpenViking / OpenClaw LoCoMo Bench Kit
+
+这是一个可执行的实验仓库骨架，用来跑你已经确定的四组实验：
+
+- G1: `OpenClaw(memory-core)`
+- G2: `OpenClaw + LanceDB (-memory-core)`
+- G3: `OpenClaw + OpenViking Plugin (-memory-core)`
+- G4: `OpenClaw + OpenViking Plugin (+memory-core)`
+
+它做了四件事：
+
+1. 用一套统一配置管理四组独立 workdir。
+2. 在当前你选定的路线下安装 / 配置 OpenClaw 2026.4.14、OpenViking 0.3.8、LanceDB 和 OpenViking context-engine 插件。
+3. 提供一个修补过的 `openclaw-eval` 等价评测器，修掉了默认 `user` 不一致、输出命名混乱、依赖 reset-session hack 等问题。
+4. 提供 smoke test、全量运行、judge、usage 汇总和最终表格生成。
+
+## 目录
+
+```text
+openviking-openclaw-bench/
+  bench_config.example.json
+  pyproject.toml
+  README.md
+  ovbench/
+    cli.py
+    config.py
+    eval.py
+    http_api.py
+    judge.py
+    judge_util.py
+    merge_results.py
+    openclaw_ops.py
+    report.py
+    util.py
+  scripts/
+    install_tools.sh
+    setup_all_groups.sh
+    smoke_all.sh
+    run_all_groups.sh
+```
+
+## 先决条件
+
+建议在一台 Linux SSH 服务器上运行，并提前准备：
+
+- Python 3.10+
+- `curl`
+- `npm`
+- `node`
+- 你的 LoCoMo 1540 数据文件
+- 你的 `openclaw-openviking-doubao` 仓库本地副本（至少要拿到其中的 `plugin/` 目录）
+
+## 1. 安装本仓库
+
+```bash
+cd /path/to/openviking-openclaw-bench
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -e .
+```
+
+## 2. 准备配置
+
+先复制一份配置文件：
+
+```bash
+cp bench_config.example.json bench_config.json
+```
+
+然后至少修改下面三处：
+
+- `dataset.path`：指向你的 `locomo10_openviking_1540.json`
+- `openviking.plugin_source`：指向你本地 `openclaw-openviking-doubao/plugin`
+- `models.front.model_id` / `models.judge.model_id`：填入你的方舟接入点 ID
+
+默认配置里已经把 embedding 统一成了 `doubao-embedding-vision-251215`，并优先使用模型名；其中 OpenViking 侧使用 `provider=volcengine`，LanceDB 侧使用 `provider=doubao`。
+
+## 3. 准备 API Key
+
+本仓库默认从环境变量里读取 Key。按当前示例配置，只需要：
+
+```bash
+export ARK_API_KEY='你的火山方舟 API Key'
+```
+
+如果你把 `bench_config.json` 里的 `api_key_env` 改成了别的名字，就按那个名字导出。
+
+## 4. 安装共享工具链
+
+```bash
+ovbench install-tools --config bench_config.json
+```
+
+这个命令会：
+
+- 安装共享的 OpenClaw CLI 到 `openclaw.prefix`
+- 安装共享的 OpenViking 0.3.8 runtime 到 `openviking.runtime_dir`
+
+## 5. 配置四组环境
+
+单组配置：
+
+```bash
+ovbench setup-group --config bench_config.json --group g1 --reset
+ovbench setup-group --config bench_config.json --group g2 --reset
+ovbench setup-group --config bench_config.json --group g3 --reset
+ovbench setup-group --config bench_config.json --group g4 --reset
+```
+
+说明：
+
+- 每组现在默认绑定同名 profile（如 `g1`、`g2`），这样 systemd service 会按组隔离，避免服务名和 state-dir 漂移。
+- 组内的 `state/.env` 会自动写入 `OPENCLAW_GATEWAY_TOKEN` 和 `CUSTOM_API_KEY`，让 daemon-managed gateway 能读到与 onboarding 相同的 SecretRef 环境。
+- `setup-group` 会在所有配置完成后执行一次 `openclaw gateway install --force`，再启动该组服务。
+- `--reset` 会清掉该组旧的 `state/ workspace/ outputs/ logs/ openviking/` 目录。
+- 每组会独立生成自己的 `state`、`workspace`、`gateway token` 和 `outputs`。
+- G2 会自动应用一次 LanceDB 的依赖修复。
+- G3/G4 会安装本地 `plugin_source` 指向的 OpenViking 插件，并写出组内 `ov.conf`。
+
+如果只想看配置是否正确：
+
+```bash
+ovbench verify-group --config bench_config.json --group g2
+```
+
+## 6. 发烟测试
+
+### 会话连续性 smoke
+
+```bash
+ovbench smoke-continuity --config bench_config.json --group g1
+ovbench smoke-continuity --config bench_config.json --group g2
+ovbench smoke-continuity --config bench_config.json --group g3
+ovbench smoke-continuity --config bench_config.json --group g4
+```
+
+它会在同一个 `user` 上先写入一个随机 token，再提问；然后换一个新 `user` 再问一次。
+
+### 单 sample smoke
+
+```bash
+ovbench smoke-sample --config bench_config.json --group g1 --sample 0 --sessions 1-2 --qa-count 5 --judge
+ovbench smoke-sample --config bench_config.json --group g2 --sample 0 --sessions 1-2 --qa-count 5 --judge
+ovbench smoke-sample --config bench_config.json --group g3 --sample 0 --sessions 1-2 --qa-count 5 --judge
+ovbench smoke-sample --config bench_config.json --group g4 --sample 0 --sessions 1-2 --qa-count 5 --judge
+```
+
+如果要做 OpenViking 组的增强 smoke，可以把 `--sessions` 去掉，再把 `--qa-count` 改成 20。
+
+## 7. 跑全量 1540
+
+单组运行：
+
+```bash
+ovbench run-group --config bench_config.json --group g1 --run-label full --judge
+ovbench run-group --config bench_config.json --group g2 --run-label full --judge
+ovbench run-group --config bench_config.json --group g3 --run-label full --judge
+ovbench run-group --config bench_config.json --group g4 --run-label full --judge
+```
+
+按计划顺序串行跑四组：
+
+```bash
+ovbench run-all --config bench_config.json --groups g1 g2 g3 g4 --run-label full --judge
+```
+
+默认行为：
+
+- `run-label=full`
+- 每组结果写到 `~/ov-bench/<group>/outputs/full/`
+- 每个 sample 都会生成：
+  - `ingest.<sample_id>.jsonl`
+  - `qa.<sample_id>.jsonl`
+- 组级还会生成：
+  - `answers.all.jsonl`
+  - `ingest.all.jsonl`
+  - `usage.json`
+  - `judge.json`
+  - `config.snapshot.json`
+  - `ov.conf.snapshot.json`（G3/G4）
+
+## 8. 单独重跑 merge / judge
+
+```bash
+ovbench merge-group --config bench_config.json --group g3 --run-label full
+ovbench judge-group --config bench_config.json --group g3 --run-label full
+```
+
+## 9. 生成最终结果表
+
+```bash
+ovbench report \
+  --config bench_config.json \
+  --groups g1 g2 g3 g4 \
+  --run-label full \
+  --output-md ~/ov-bench/final_report.md \
+  --output-json ~/ov-bench/final_report.json
+```
+
+会生成一张 Markdown 表和一个 JSON 摘要。
+
+## 关键实现差异
+
+这个仓库里的评测器，不是原封不动照搬 upstream `openclaw-eval`，而是做了你前面已经确定的几项修正：
+
+- 默认 `user` 统一为 `"{run_label}-{group_id}-{sample_id}"`
+- 不再依赖 `~/.openclaw/.../sessions.json` 的 reset-session hack
+- 输出文件改成按 `sample_id` 命名，而不是按循环序号
+- `answers.all.jsonl` 和 `usage.json` 自动生成
+- 同时统计 QA-only 和 full-pipeline token 成本
+
+## LanceDB 说明
+
+G2 的 `setup-group` 内置了一次 best-effort 修复：
+
+- 如果缺失 `dist/package.json`，会补一个最小版本
+- 会在 `memory-lancedb` 扩展目录里执行 `npm install @lancedb/lancedb`
+
+修复信息会写到：
+
+```text
+~/ov-bench/g2/logs/lancedb.workaround.json
+```
+
+## 最常用的一套命令
+
+```bash
+export ARK_API_KEY='你的 key'
+source .venv/bin/activate
+
+ovbench install-tools --config bench_config.json
+
+ovbench setup-group --config bench_config.json --group g1 --reset
+ovbench setup-group --config bench_config.json --group g2 --reset
+ovbench setup-group --config bench_config.json --group g3 --reset
+ovbench setup-group --config bench_config.json --group g4 --reset
+
+ovbench smoke-continuity --config bench_config.json --group g1
+ovbench smoke-continuity --config bench_config.json --group g2
+ovbench smoke-continuity --config bench_config.json --group g3
+ovbench smoke-continuity --config bench_config.json --group g4
+
+ovbench smoke-sample --config bench_config.json --group g1 --sample 0 --sessions 1-2 --qa-count 5 --judge
+ovbench smoke-sample --config bench_config.json --group g2 --sample 0 --sessions 1-2 --qa-count 5 --judge
+ovbench smoke-sample --config bench_config.json --group g3 --sample 0 --sessions 1-2 --qa-count 5 --judge
+ovbench smoke-sample --config bench_config.json --group g4 --sample 0 --sessions 1-2 --qa-count 5 --judge
+
+ovbench run-all --config bench_config.json --groups g1 g2 g3 g4 --run-label full --judge
+
+ovbench report --config bench_config.json --groups g1 g2 g3 g4 --run-label full \
+  --output-md ~/ov-bench/final_report.md \
+  --output-json ~/ov-bench/final_report.json
+```

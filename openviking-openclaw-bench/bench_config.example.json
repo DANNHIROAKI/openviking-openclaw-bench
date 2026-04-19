@@ -1,0 +1,75 @@
+{
+  "bench_root": "~/ov-bench",
+  "dataset": {
+    "path": "/home/dhy/work/OpenViking-LoCoMo10/data/openviking-locomo10-1540/locomo10_openviking_1540.json"
+  },
+  "openclaw": {
+    "version": "2026.4.14",
+    "prefix": "~/ov-bench/tools/openclaw",
+    "install_script_url": "https://openclaw.ai/install-cli.sh"
+  },
+  "openviking": {
+    "version": "0.3.8",
+    "runtime_dir": "/home/dhy/ov-bench/tools/openviking-runtime",
+    "plugin_source": "/home/dhy/work/openclaw-openviking-doubao/plugin"
+  },
+  "models": {
+    "front": {
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "model_id": "ep-20260416162446-48fvm",
+      "api_key_env": "ARK_API_KEY",
+      "provider_id": "ark-seed-code",
+      "compatibility": "openai"
+    },
+    "judge": {
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "model_id": "ep-20260418153228-nd779",
+      "api_key_env": "ARK_API_KEY"
+    },
+    "embedding": {
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "multimodal_url": "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
+      "model_name": "doubao-embedding-vision-251215",
+      "endpoint_id": "ep-20260417020931-wp6ls",
+      "api_key_env": "ARK_API_KEY",
+      "provider": "volcengine",
+      "lancedb_provider": "doubao",
+      "prefer_model_name": true
+    },
+    "ov_vlm": {
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "model_name": "doubao-seed-2-0-pro-260215",
+      "api_key_env": "ARK_API_KEY",
+      "provider": "volcengine"
+    }
+  },
+  "groups": {
+    "g1": {
+      "context_engine": "legacy",
+      "memory_plugin": "memory-core",
+      "gateway_port": 18791,
+      "notes": "OpenClaw(memory-core)"
+    },
+    "g2": {
+      "context_engine": "legacy",
+      "memory_plugin": "memory-lancedb",
+      "gateway_port": 18792,
+      "notes": "OpenClaw + LanceDB (-memory-core)"
+    },
+    "g3": {
+      "context_engine": "openviking",
+      "memory_plugin": "none",
+      "gateway_port": 18793,
+      "openviking_port": 19333,
+      "notes": "OpenClaw + OpenViking Plugin (-memory-core)"
+    },
+    "g4": {
+      "context_engine": "openviking",
+      "memory_plugin": "memory-core",
+      "gateway_port": 18794,
+      "openviking_port": 19334,
+      "notes": "OpenClaw + OpenViking Plugin (+memory-core)"
+    }
+  }
+}
+

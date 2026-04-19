@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openviking-openclaw-bench"
+version = "0.1.0"
+description = "Experiment harness for OpenClaw/OpenViking/LoCoMo benchmark runs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31.0",
+  "openai>=1.30.0",
+  "python-dotenv>=1.0.1"
+]
+
+[project.scripts]
+ovbench = "ovbench.cli:main"
+ovbench-eval = "ovbench.eval:main"
+ovbench-judge = "ovbench.judge:main"
+ovbench-merge = "ovbench.merge_results:main"
+ovbench-report = "ovbench.report:main"
+
+[tool.setuptools]
+packages = ["ovbench"]
